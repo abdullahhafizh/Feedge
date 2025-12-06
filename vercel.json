@@ -5,6 +5,9 @@
   ],
   "routes": [
     { "handle": "filesystem" },
+    { "src": "/api/rss-badge", "dest": "/api/rss-badge.ts" },
+    { "src": "/api/generate-url", "dest": "/api/generate-url.ts" },
+    { "src": "/api/health", "dest": "/api/health.ts" },
     { "src": "/generate-url", "dest": "/api/generate-url.ts" },
     { "src": "/", "status": 308, "headers": { "Location": "/generate-url" } }
   ]
