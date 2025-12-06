@@ -27,6 +27,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const feed = getParam('feed');
   const title = getParam('title');
 
+  const feedUrl = feed ? String(feed) : undefined;
+
   // Parameters with defaults
   const maxItems = parseInt(getParam('max_items') ?? '5', 10);
   const themeValue = getParam('theme')?.toLowerCase();
@@ -59,7 +61,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     username ? String(username) : undefined,
     sig ? String(sig) : undefined,
     secret,
-    true
+    true,
+    feedUrl,
   );
 
   if (!validation.valid) {
@@ -68,7 +71,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  const feedUrl = feed ? String(feed) : undefined;
   if (!feedUrl) {
     res.setHeader('Content-Type', 'image/svg+xml');
     res.status(400).send(renderErrorSvg('CONFIG_ERROR', config));

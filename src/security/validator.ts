@@ -60,15 +60,23 @@ function recordFailedAttempt(username: string, signature: string): void {
 
 const STATIC_NONCE = 'github-rss-badge-v1';
 
-export function generateSignature(username: string, secret: string): string {
-  const payload = `${username}:${STATIC_NONCE}`;
+export function generateSignature(username: string, secret: string, feedUrl?: string): string {
+  const normalizedFeed = feedUrl ?? '';
+  const payload = normalizedFeed
+    ? `${username}:${normalizedFeed}:${STATIC_NONCE}`
+    : `${username}:${STATIC_NONCE}`;
   const hmac = createHmac('sha256', secret);
   hmac.update(payload);
   return hmac.digest('hex');
 }
 
-export function verifySignature(username: string, providedSignature: string, secret: string): boolean {
-  const expected = generateSignature(username, secret);
+export function verifySignature(
+  username: string,
+  providedSignature: string,
+  secret: string,
+  feedUrl?: string,
+): boolean {
+  const expected = generateSignature(username, secret, feedUrl);
   try {
     const providedBuf = Buffer.from(providedSignature, 'hex');
     const expectedBuf = Buffer.from(expected, 'hex');
@@ -87,6 +95,7 @@ export function validateRequest(
   signature: string | undefined,
   secret: string | undefined,
   securityEnabled: boolean,
+  feedUrl?: string | undefined,
 ): SecurityValidationResult {
   if (!securityEnabled) {
     logger.info('Security disabled, allowing request');
@@ -113,7 +122,7 @@ export function validateRequest(
     return { valid: false, error: 'Too many failed attempts, please wait', cached: true };
   }
 
-  const ok = verifySignature(username, signature, secret);
+  const ok = verifySignature(username, signature, secret, feedUrl);
   if (!ok) {
     recordFailedAttempt(username, signature);
     logger.warn('Invalid signature', { username });
@@ -130,7 +139,7 @@ export function generateBadgeUrl(
   secret: string,
   options?: { maxItems?: number; theme?: 'light' | 'dark'; feedUrl?: string },
 ): string {
-  const sig = generateSignature(username, secret);
+  const sig = generateSignature(username, secret, options?.feedUrl);
   const params = new URLSearchParams();
   params.set('username', username);
 

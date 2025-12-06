@@ -47,6 +47,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const position = positionRaw !== undefined ? parseInt(positionRaw, 10) : 0;
 
+  const feedUrl = feed ? String(feed) : undefined;
+
   const secret = process.env.SIGNING_SECRET;
   if (!secret) {
     res.status(500).json({ error: 'Server not configured' });
@@ -58,7 +60,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     username ? String(username) : undefined,
     sig ? String(sig) : undefined,
     secret,
-    true
+    true,
+    feedUrl,
   );
 
   if (!validation.valid) {
@@ -66,7 +69,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  const feedUrl = feed ? String(feed) : undefined;
   if (!feedUrl) {
     res.status(400).json({ error: 'Feed URL required' });
     return;

@@ -87,7 +87,7 @@ const server = Bun.serve({
         });
       }
 
-      const validation = validateRequest(q.username, q.sig, SIGNING_SECRET, true);
+      const validation = validateRequest(q.username, q.sig, SIGNING_SECRET, true, q.feed);
 
       if (!validation.valid) {
         return new Response(renderErrorSvg('SECURITY_ERROR', config), {
