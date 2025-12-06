@@ -4,7 +4,6 @@
     { "src": "api/**/*.ts", "use": "@vercel/node" }
   ],
   "routes": [
-    { "src": "/api/(.*)", "dest": "/api/$1" },
     { "src": "/generate-url", "dest": "/api/generate-url.ts" },
     { "src": "/", "status": 308, "headers": { "Location": "/generate-url" } }
   ]
