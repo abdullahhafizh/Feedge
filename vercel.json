@@ -1,11 +1,8 @@
 {
-  "version": 2,
-  "builds": [
-    { "src": "api/**/*.ts", "use": "@vercel/node" }
+  "redirects": [
+    { "source": "/", "destination": "/generate-url", "permanent": true }
   ],
-  "routes": [
-    { "handle": "filesystem" },
-    { "src": "/generate-url", "dest": "/api/generate-url.ts" },
-    { "src": "/", "status": 308, "headers": { "Location": "/generate-url" } }
+  "rewrites": [
+    { "source": "/generate-url", "destination": "/api/generate-url" }
   ]
 }
