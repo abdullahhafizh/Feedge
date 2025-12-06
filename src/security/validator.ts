@@ -73,7 +73,10 @@ export function verifySignature(username: string, providedSignature: string, sec
     const providedBuf = Buffer.from(providedSignature, 'hex');
     const expectedBuf = Buffer.from(expected, 'hex');
     if (providedBuf.length !== expectedBuf.length) return false;
-    return timingSafeEqual(providedBuf, expectedBuf);
+    // Use a loosely-typed wrapper to avoid TS incompatibilities between
+    // Node's Buffer/ArrayBufferView definitions across environments.
+    const safeEqual = timingSafeEqual as unknown as (a: any, b: any) => boolean;
+    return safeEqual(providedBuf, expectedBuf);
   } catch {
     return false;
   }

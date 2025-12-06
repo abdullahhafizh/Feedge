@@ -26,14 +26,16 @@ export async function fetchOgMetadata(url: string): Promise<OgMetadata> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), OG_FETCH_TIMEOUT_MS);
 
-    const response = await fetch(url, {
+    // Cast to any so TypeScript doesn't complain about the Response/Headers
+    // shape when building in non-Bun environments (e.g. Vercel Node runtime).
+    const response = (await fetch(url, {
       method: 'GET',
       headers: {
         'User-Agent': 'Feedge/1.0 (Icon Fetcher)',
         Accept: 'text/html',
       },
       signal: controller.signal,
-    });
+    })) as any;
 
     clearTimeout(timeoutId);
 

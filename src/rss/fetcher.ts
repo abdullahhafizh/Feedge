@@ -47,11 +47,14 @@ export async function fetchFeed(url: string, options: FetchOptions = {}): Promis
       const controller = new AbortController();
       const tid = setTimeout(() => controller.abort(), timeoutMs);
 
-      const res = await fetch(url, {
+      // Cast to any so this compiles both in Bun (where Response has extra
+      // properties) and in Node/Vercel where the TS lib for Response differs.
+      const res = (await fetch(url, {
         method: 'GET',
         headers: { 'User-Agent': USER_AGENT, Accept: 'application/rss+xml, application/xml, text/xml, */*' },
         signal: controller.signal,
-      });
+      })) as any;
+
       clearTimeout(tid);
 
       if (!res.ok) {
