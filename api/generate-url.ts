@@ -1,5 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { generateBadgeUrl } from '../src/security/validator.js';
+import { fetchFeed } from '../src/rss/fetcher.js';
+import { tryParseFeed } from '../src/rss/parser.js';
+import { sortPostsByDate } from '../src/transform/selector.js';
 
 function isGeneratorEnabled(): boolean {
   const raw = process.env.URL_GENERATOR_ENABLED;
@@ -35,7 +38,7 @@ button[type="submit"]:disabled{background:#8c959f;cursor:not-allowed}
 @keyframes spin{to{transform:rotate(360deg)}}
 </style></head><body>
 <h1>📡 Feedge - Badge URL Generator</h1>
-<form id="generator-form">
+<form id="generator-form" method="POST" action="" onsubmit="return false">
 <label>Username *</label><input name="username" id="username" required placeholder="your-username">
 <label>Feed URL *</label><input name="feedUrl" id="feedUrl" required placeholder="https://blog.example.com/feed.xml" type="url">
 <label>Max Items</label><select name="maxItems" id="maxItems"><option value="3">3</option><option value="5" selected>5</option><option value="10">10</option></select>
@@ -49,89 +52,119 @@ button[type="submit"]:disabled{background:#8c959f;cursor:not-allowed}
 </div>
 
 <script>
-const form = document.getElementById('generator-form');
-const submitBtn = document.getElementById('submit-btn');
-const resultDiv = document.getElementById('result');
-const resultTitle = document.getElementById('result-title');
-const resultContent = document.getElementById('result-content');
+(function() {
+  var form = document.getElementById('generator-form');
+  var submitBtn = document.getElementById('submit-btn');
+  var resultDiv = document.getElementById('result');
+  var resultTitle = document.getElementById('result-title');
+  var resultContent = document.getElementById('result-content');
 
-form.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  
-  submitBtn.disabled = true;
-  submitBtn.innerHTML = '<span class="spinner"></span>Generating...';
-  resultDiv.className = 'result';
-  
-  const data = {
-    username: document.getElementById('username').value,
-    feedUrl: document.getElementById('feedUrl').value,
-    maxItems: document.getElementById('maxItems').value,
-    theme: document.getElementById('theme').value
-  };
-  
-  try {
-    const res = await fetch('/api/generate-url', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(data)
-    });
+  if (!form) { console.error('Form not found'); return; }
+
+  form.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    e.stopPropagation();
     
-    const json = await res.json();
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner"></span>Generating...';
+    resultDiv.className = 'result';
     
-    if (json.error) {
+    var formData = {
+      username: document.getElementById('username').value,
+      feedUrl: document.getElementById('feedUrl').value,
+      maxItems: document.getElementById('maxItems').value,
+      theme: document.getElementById('theme').value
+    };
+    
+    try {
+      var res = await fetch('/api/generate-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+      
+      var json = await res.json();
+      
+      if (json.error) {
+        resultDiv.className = 'result error';
+        resultTitle.textContent = '❌ Error';
+        resultContent.innerHTML = '<p>' + json.error + '</p>';
+      } else {
+        resultDiv.className = 'result success';
+        resultTitle.textContent = '✅ Badge Generated Successfully!';
+        resultContent.innerHTML = window.buildResultHtml(json);
+      }
+    } catch (err) {
       resultDiv.className = 'result error';
       resultTitle.textContent = '❌ Error';
-      resultContent.innerHTML = '<p>' + json.error + '</p>';
-    } else {
-      resultDiv.className = 'result success';
-      resultTitle.textContent = '✅ Badge Generated Successfully!';
-      resultContent.innerHTML = buildResultHtml(json);
+      resultContent.innerHTML = '<p>Network error. Please try again.</p>';
     }
-  } catch (err) {
-    resultDiv.className = 'result error';
-    resultTitle.textContent = '❌ Error';
-    resultContent.innerHTML = '<p>Network error. Please try again.</p>';
-  }
-  
-  submitBtn.disabled = false;
-  submitBtn.textContent = 'Generate Badge URL';
-});
-
-function buildResultHtml(data) {
-  var escapeHtml = function(s) { return s.replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
-  return '<div class="code-block">' +
-    '<label>📋 Markdown (for README.md)</label>' +
-    '<code id="markdown-code">' + data.markdown + '</code>' +
-    '<button class="copy-btn" onclick="copyCode(\'markdown-code\', this)">Copy</button>' +
-    '</div>' +
-    '<div class="code-block">' +
-    '<label>🔗 Direct URL</label>' +
-    '<code id="url-code">' + data.url + '</code>' +
-    '<button class="copy-btn" onclick="copyCode(\'url-code\', this)">Copy</button>' +
-    '</div>' +
-    '<div class="code-block">' +
-    '<label>🌐 HTML</label>' +
-    '<code id="html-code">' + escapeHtml(data.html) + '</code>' +
-    '<button class="copy-btn" onclick="copyCode(\'html-code\', this)">Copy</button>' +
-    '</div>' +
-    '<div class="preview">' +
-    '<label>👁️ Preview</label>' +
-    '<img src="' + data.url + '" alt="Badge Preview">' +
-    '</div>';
-}
-
-function copyCode(id, btn) {
-  const el = document.getElementById(id);
-  const text = el.innerText;
-  navigator.clipboard.writeText(text).then(() => {
-    btn.textContent = 'Copied!';
-    btn.classList.add('copied');
-    setTimeout(() => {
-      btn.textContent = 'Copy';
-      btn.classList.remove('copied');
-    }, 2000);
+    
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Generate Badge URL';
   });
-}
+
+  window.buildResultHtml = function(data) {
+    var esc = function(s) { return s.replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+    
+    var html = '<h4>🔗 Clickable Badges (each links to its post)</h4>' +
+      '<div class="code-block">' +
+      '<label>📋 Combined Markdown (copy all)</label>' +
+      '<code id="combined-code">' + esc(data.combinedMarkdown || '') + '</code>' +
+      '<button class="copy-btn" data-copy="combined-code">Copy</button>' +
+      '</div>' +
+      '<div class="preview">' +
+      '<label>👁️ Preview (each badge is clickable)</label>';
+    
+    if (data.badges && data.badges.length > 0) {
+      for (var i = 0; i < data.badges.length; i++) {
+        var b = data.badges[i];
+        var href = b.redirectUrl || b.postUrl;
+        html += '<a href="' + href + '" target="_blank" style="display:block;margin:0.5rem 0">' +
+          '<img src="' + b.badgeUrl + '" alt="' + esc(b.title) + '" style="max-width:100%">' +
+          '</a>';
+      }
+    }
+    
+    html += '</div>' +
+      '<hr style="margin:1.5rem 0;border:none;border-top:1px solid #d0d7de">' +
+      '<h4>📦 Single Badge (all posts in one)</h4>' +
+      '<div class="code-block">' +
+      '<label>📋 Markdown</label>' +
+      '<code id="markdown-code">' + (data.markdown || '') + '</code>' +
+      '<button class="copy-btn" data-copy="markdown-code">Copy</button>' +
+      '</div>' +
+      '<div class="code-block">' +
+      '<label>🔗 Direct URL</label>' +
+      '<code id="url-code">' + (data.url || '') + '</code>' +
+      '<button class="copy-btn" data-copy="url-code">Copy</button>' +
+      '</div>' +
+      '<div class="preview">' +
+      '<label>👁️ Preview</label>' +
+      '<img src="' + (data.url || '') + '" alt="Badge Preview">' +
+      '</div>';
+    
+    return html;
+  };
+
+  document.addEventListener('click', function(e) {
+    var btn = e.target;
+    if (!btn.classList || !btn.classList.contains('copy-btn')) return;
+    var id = btn.getAttribute('data-copy');
+    if (!id) return;
+    var el = document.getElementById(id);
+    if (!el) return;
+    var text = el.innerText;
+    navigator.clipboard.writeText(text).then(function() {
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(function() {
+        btn.textContent = 'Copy';
+        btn.classList.remove('copied');
+      }, 2000);
+    });
+  });
+})();
 </script>
 </body></html>`;
 }
@@ -175,20 +208,77 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    const url = generateBadgeUrl(baseUrl, username, secret, {
-      maxItems: parseInt(maxItems, 10) || undefined,
-      theme: theme === 'dark' ? 'dark' : 'light',
+    const itemCount = parseInt(maxItems, 10) || 5;
+    const selectedTheme = theme === 'dark' ? 'dark' : 'light';
+
+    // Fetch RSS to get post URLs for clickable badges
+    const fetchResult = await fetchFeed(feedUrl, { timeoutMs: 8000 });
+    if (!fetchResult.success || !fetchResult.body) {
+      if (wantsJson) {
+        res.status(400).json({ error: 'Failed to fetch RSS feed: ' + (fetchResult.error?.message || 'Unknown error') });
+      } else {
+        res.status(400).send('Failed to fetch RSS feed');
+      }
+      return;
+    }
+
+    const parseResult = tryParseFeed(fetchResult.body);
+    if (parseResult.error) {
+      if (wantsJson) {
+        res.status(400).json({ error: 'Failed to parse RSS feed: ' + parseResult.error });
+      } else {
+        res.status(400).send('Failed to parse RSS feed');
+      }
+      return;
+    }
+
+    const sortedPosts = sortPostsByDate(parseResult.posts).slice(0, itemCount);
+
+    // Generate individual badge URLs with position param
+    // Use redirect endpoint for links so they're always dynamic
+    const badges = sortedPosts.map((post, i) => {
+      const badgeUrl = generateBadgeUrl(baseUrl, username, secret, {
+        maxItems: itemCount,
+        theme: selectedTheme as 'light' | 'dark',
+        feedUrl,
+      }) + `&position=${i}`;
+
+      // Build redirect URL (same signature works for redirect)
+      const redirectUrl = badgeUrl.replace('/api/rss-badge', '/api/redirect');
+
+      return {
+        position: i,
+        title: post.title, // Current title (for preview only)
+        postUrl: post.url, // Current URL (for preview only)
+        badgeUrl,
+        redirectUrl,
+        // Dynamic markdown - alt text is generic, link goes to redirect endpoint
+        markdown: `[![Post ${i + 1}](${badgeUrl})](${redirectUrl})`,
+        html: `<a href="${redirectUrl}"><img src="${badgeUrl}" alt="Post ${i + 1}"></a>`,
+      };
+    });
+
+    // Also generate a combined markdown for all badges
+    const combinedMarkdown = badges.map(b => b.markdown).join('\n');
+
+    // Legacy single badge URL (all posts in one)
+    const singleUrl = generateBadgeUrl(baseUrl, username, secret, {
+      maxItems: itemCount,
+      theme: selectedTheme as 'light' | 'dark',
       feedUrl,
     });
 
-    const markdown = `![Blog Posts](${url})`;
-    const html = `<a href="${url}"><img src="${url}" alt="Blog Posts"></a>`;
-
     if (wantsJson) {
-      res.status(200).json({ url, markdown, html });
+      res.status(200).json({
+        url: singleUrl,
+        markdown: `![Blog Posts](${singleUrl})`,
+        html: `<a href="${feedUrl}"><img src="${singleUrl}" alt="Blog Posts"></a>`,
+        badges,
+        combinedMarkdown,
+      });
     } else {
       res.setHeader('Content-Type', 'text/html');
-      res.status(200).send(`<a href="${url}">${url}</a>`);
+      res.status(200).send(`<a href="${singleUrl}">${singleUrl}</a>`);
     }
     return;
   }

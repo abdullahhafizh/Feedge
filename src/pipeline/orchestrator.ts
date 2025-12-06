@@ -23,6 +23,7 @@ export interface BadgeOptions extends FetchOptions, SelectOptions {
   theme?: 'light' | 'dark';
   badgeTitle?: string;
   hideTitle?: boolean;
+  position?: number; // If set, only render the post at this position (0 = latest)
 }
 
 export interface BadgeResult {
@@ -68,9 +69,28 @@ export async function generateBadge(feedUrl: string, options: BadgeOptions = {})
   }
 
   // Use async version if fetchIcons is enabled
-  const selection = options.fetchIcons
+  let selection = options.fetchIcons
     ? await selectPostsWithIcons(parseResult.posts, options)
     : selectPosts(parseResult.posts, options);
+
+  // Single post mode: filter to just the post at position
+  if (options.position !== undefined && options.position >= 0) {
+    const post = selection.posts[options.position];
+    if (post) {
+      selection = {
+        ...selection,
+        posts: [post],
+        metadata: { ...selection.metadata, selected: 1 },
+      };
+    } else {
+      // Position out of range
+      return {
+        success: true,
+        svg: renderEmptyStateSvg(config),
+        metadata: { postsFound: parseResult.posts.length, postsRendered: 0, duration: Date.now() - start, feedUrl },
+      };
+    }
+  }
 
   if (isEmptyResult(selection)) {
     return {
@@ -80,8 +100,13 @@ export async function generateBadge(feedUrl: string, options: BadgeOptions = {})
     };
   }
 
-  const badgeTitle = options.badgeTitle ?? 'Latest Blog Posts';
-  const showTitle = options.hideTitle ? false : true;
+  const badgeTitle = options.badgeTitle ?? '';
+  const showTitle = options.position !== undefined
+    ? false
+    : options.hideTitle
+      ? false
+      : Boolean(options.badgeTitle);
+
   const svg = renderBadgeSvg(selection.posts, config, badgeTitle, showTitle);
 
   logger.info('Badge generated', { posts: selection.posts.length, duration: Date.now() - start });

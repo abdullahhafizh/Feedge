@@ -4,6 +4,25 @@ import { createLogger } from '../utils/logger.js';
 
 const logger = createLogger('svg-renderer');
 
+const UTM_VALUE = 'feedge.abdullahhafizh.my.id';
+
+function appendUtmParams(originalUrl: string): string {
+  try {
+    const u = new URL(originalUrl);
+    u.searchParams.set('utm_source', UTM_VALUE);
+    u.searchParams.set('utm_medium', UTM_VALUE);
+    u.searchParams.set('utm_campaign', UTM_VALUE);
+    return u.toString();
+  } catch {
+    const hashIndex = originalUrl.indexOf('#');
+    const base = hashIndex >= 0 ? originalUrl.slice(0, hashIndex) : originalUrl;
+    const hash = hashIndex >= 0 ? originalUrl.slice(hashIndex) : '';
+    const sep = base.includes('?') ? '&' : '?';
+    const tail = `utm_source=${encodeURIComponent(UTM_VALUE)}&utm_medium=${encodeURIComponent(UTM_VALUE)}&utm_campaign=${encodeURIComponent(UTM_VALUE)}`;
+    return `${base}${sep}${tail}${hash}`;
+  }
+}
+
 export function escapeXml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -30,11 +49,14 @@ const EMOJI = {
   network: '🌐',     // globe for network errors
 };
 
-function calculateDimensions(postCount: number, config: Config): { width: number; height: number } {
-  const headerHeight = 40;
+function calculateDimensions(postCount: number, config: Config, showTitle: boolean): { width: number; height: number } {
+  // When title is hidden, shrink top padding + header height so content hugs the top
+  const topPadding = showTitle ? config.padding : 4;
+  const headerHeight = showTitle ? 40 : 0;
   const contentHeight = postCount * config.lineHeight;
   const footerHeight = 16;
-  const height = config.padding + headerHeight + contentHeight + footerHeight + config.padding;
+  const bottomPadding = config.padding;
+  const height = topPadding + headerHeight + contentHeight + footerHeight + bottomPadding;
   return { width: config.width, height };
 }
 
@@ -83,17 +105,14 @@ function renderPostItem(post: RenderablePost, y: number, index: number, config: 
   const iconSize = 16;
   const textX = config.padding + iconSize + 6; // icon + gap
   const title = escapeXml(post.displayTitle);
-  const url = escapeXml(post.url);
+  const urlWithUtm = appendUtmParams(post.url);
+  const url = escapeXml(urlWithUtm);
   const textY = y + 14;
   const animDelayMs = 150 + index * 100;
 
-  // Use fetched icon if available, otherwise fallback to emoji or SVG icon
+  // Use emoji or fallback SVG icon so the badge works well on platforms that sanitize external images
   let iconContent: string;
-  if (post.iconUrl) {
-    // Render fetched OG/favicon as image
-    const iconUrl = escapeXml(post.iconUrl);
-    iconContent = `<image x="${config.padding}" y="${y}" width="${iconSize}" height="${iconSize}" href="${iconUrl}" preserveAspectRatio="xMidYMid slice" />`;
-  } else if (useEmoji) {
+  if (useEmoji) {
     iconContent = `<text x="${config.padding}" y="${y + 14}" class="rss-emoji">${EMOJI.post}</text>`;
   } else {
     iconContent = `<svg class="rss-icon" x="${config.padding}" y="${y}" width="${iconSize}" height="${iconSize}" viewBox="0 0 18 18" overflow="visible">${POST_ICON}</svg>`;
@@ -125,11 +144,11 @@ export function renderBadgeSvg(
 ): string {
   const colors = getThemeColors(config);
   const fontFamily = getFontFamily(config);
-  const { width, height } = calculateDimensions(posts.length, config);
+  const { width, height } = calculateDimensions(posts.length, config, showTitle);
   const styles = generateStyles(colors, fontFamily, config.fontSize);
 
   const headerY = config.padding + 24;
-  const postsStartY = config.padding + 50;
+  const postsStartY = showTitle ? config.padding + 50 : 4;
 
   const items = posts
     .map((post, index) => renderPostItem(post, postsStartY + index * config.lineHeight, index, config))

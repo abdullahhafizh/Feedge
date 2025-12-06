@@ -34,6 +34,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const titleMaxLength = parseInt(getParam('title_max_length') ?? '50', 10);
   const timeoutMs = parseInt(getParam('timeout_ms') ?? '8000', 10);
 
+  // Single post mode: position=0 means latest, position=1 means second, etc.
+  const positionRaw = getParam('position');
+  const position = positionRaw !== undefined ? parseInt(positionRaw, 10) : undefined;
+
   // Boolean flags with defaults
   const hideTitleRaw = getParam('hide_title')?.toLowerCase();
   const hideTitle = hideTitleRaw ? ['1', 'true', 'yes'].includes(hideTitleRaw) : false;
@@ -73,12 +77,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const result = await generateBadge(feedUrl, {
     theme: selectedTheme,
-    maxItems,
+    maxItems: position !== undefined ? position + 1 : maxItems, // fetch enough posts for position
     titleMaxLength,
     timeoutMs,
     badgeTitle: title,
     hideTitle,
     fetchIcons,
+    position, // single post mode
   });
 
   res.setHeader('Content-Type', 'image/svg+xml');
